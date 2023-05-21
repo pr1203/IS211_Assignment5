@@ -1,185 +1,102 @@
-import argparse
-from urllib.request import urlopen
 import csv
-import re
-import time
+import argparse
+from urllib import request
 
 
-class Queue():
-    
+# Request class defines each request
+class Request:
+    def __init__(self, request_time, resource_name, processing_time):
+        # Which second it was generated for
+        self.request_time = request_time
+        # File name
+        self.file_name = resource_name
+        # Time needed to finish
+        self.processing_time = processing_time
+
+        # Time took requests for waiting
+        self.wait_time = 0
+        # Time took to process
+        self.progress_time = 0
+
+    def update(self):
+        self.wait_time += 1
+
+
+class Server:
     def __init__(self):
-        self.items = []
+        # List container for queue request
+        self.request_queue = []
 
-    def items(self):
-        return self.items
+    def put_queue(self, request: Request):
+        # Appending queue request to list container
+        self.request_queue.append(request)
 
-    def is_empty(self):
-        return self.items == []
+    def update_queue(self) -> Request:
+        queue_list = len(self.request_queue)
+        current_request = self.request_queue[0]
 
-    def enqueue(self, item):
-        self.items.insert(0, item)
+        if (self.request_queue):
+            for i in range(0, queue_list):
+                if (i == 0):
+                    self.request_queue[i].progress_time += 1
 
-    def dequeue(self):
-        return self.items.pop()
+        elif (current_request.progress_time == current_request.processing_time):
+            return_value = self.request_queue.pop(0)
 
-    def size(self):
-        return len(self.items)
+        elif (not self.request_queue):
+            return_value = None
 
-
-class Server():
-    
-    def __init__(self):
-        """intialize an instance"""
-
-        self.current_request = None
-        self.time_remaining = 0 #internal timer
-
-    def tick(self):
-        """Decrements the internal timer sets the server to idle when task completed"""
-
-        if self.current_request != None:
-            self.time_remaining = self.time_remaining - 1 
-            if self.time_remaining <= 0:
-                self.current_request = None
-
-    def busy(self):
-        if self.current_request != None:
-            return True
-        else:
-            return False
-
-    def start_next(self, new_request):
-        self.current_request = new_request
-        self.time_remaining = new_request.get_processing_time() 
+        return return_value
 
 
-class Request():
-    """represents a single server request"""
+def simulateOneServer(requests):
+    req_processed = 0
+    timer = 0
+    total_wait_time = 0
+    req_num = len(requests)
 
-    def __init__(self, time, processing_time):
-        self.timestamp = time # used for computing wait time —- time request was created/place in queue
-        self.processing_time = processing_time # row[2] from csv_reader
+    if (req_num == 1):
+        return 0
 
-    def get_stamp(self):
-        return self.timestamp
+    server = Server()
 
-    def get_processing_time(self):
-        return self.processing_time
+    while (req_processed != req_num):
+        for req in requests:
+            if (req.reqeust_time == timer):
+                server.put_queue(req)
 
-    def wait_time(self, current_time):
-        if current_time - self.timestamp <= 0:
-            #print(self.processing_time)
-            return self.processing_time
-        else:
-            return current_time - self.timestamp #amt of time spent in queue before request was processed
-            #print(current_time - self.timestamp)
+        req_done = server.update_queue()
 
+        if (req_done != None):
+            total_wait_time += req_done.wait_time
+            req_processed += 1
 
-def simulateOneServer(file): 
-
-    web_server = Server()
-    request_queue = Queue()
-    waiting_times = [] 
-
- 
-    csv_file = urlopen(file)
-    csv_list = [i.decode("utf-8") for i in csv_file] #decode csv and store each row as a string in a big list
-    csv_reader = csv.reader(csv_list, delimiter=',') #take each row (single string) and and break each string into separate elements of a smaller list
-    requests = [[int(row[0]), row[1], int(row[2])] for row in csv_reader] #converts row[0] and row[2] from csv to ints
-    
-   
-
-    for current_second in range(len(requests)):
-        
-        request = Request(requests[current_second][0], requests[current_second][2])
-        request_queue.enqueue(request)
-        
-        if (not web_server.busy()) and (not request_queue.is_empty()):
-            next_request = request_queue.dequeue()
-            waiting_times.append(next_request.wait_time(current_second)) 
-            web_server.start_next(next_request)
-        
-        web_server.tick()
-    
-    average_wait = sum(waiting_times) / len(waiting_times)
-    print("Average wait %1.1f secs. %i requests remaining." % (average_wait, request_queue.size()))
+        timer += 1
+    return float(total_wait_time / req_num)
 
 
-def simulateManyServers(file, servers):
+def main(fileName):
+    req = []
+    try:
+        with open(fileName) as f:
+            req_list = csv.reader(f)
+            for line in req_list:
+                request_time = int(line[0].strip())
+                file_name = line[1].strip()
+                processing_time = int(line[2].strip())
+                req.append(Request(request_time, file_name, processing_time))
+    except:
+        print(f"Error occurred. Either {fileName} does not exist or other error.")
 
-    web_server = Server()
-    queue_list = Queue()
-    waiting_times = [] 
-    server_count = servers
-    counter = 0
+    if (len(req) < 1):
+        print("Request is less than 1.")
 
-    
-    csv_file = urlopen(file)
-    csv_list = [i.decode("utf-8") for i in csv_file] #decode csv and store each row as a string in a big list
-    csv_reader = csv.reader(csv_list, delimiter=',') #take each row (single string) and and break each string into separate elements of a smaller list
-    requests = [[int(row[0]), row[1], int(row[2])] for row in csv_reader] #converts row[0] and row[2] from csv to ints
-    
-    queue_list = [Queue for i in range(server_count)]
+    avg_wait_time = simulateOneServer(req)
 
-    queue_wait_avgs = []
+    print(f"File {fileName} has {len(req)} requests and the average wait time is {avg_wait_time:2f}.")
 
-    for r in range(len(requests)):
-
-
-
-        request = Request(requests[r][0], requests[r][2])
-        queue_list[counter].enqueue(request)
-        
-        if counter < server_count - 1:
-            counter += 1                                        
-        else:
-            counter = 0 
-
-    for assignment in range(server_count):
-        current_request = queue_list[assignment].dequeue()
-
-        for current_second in range(queue_list[assignment].size()):
-            if(not web_server.busy()) and (not queue_list[assignment].is_empty()):
-                next_request = queue_list[assignment].dequeue()
-                waiting_times.append(next_request.wait_time(current_request.get_stamp + current_request.get_processing_time()))
-                web_server.start_next(next_request)
-                current_request = next_request
-            web_server.tick()
-    
-    
-        queue_wait_avgs.append(sum(waiting_times) / len(waiting_times))
-
-    total = 0
-
-    for t in range(len(queue_wait_avgs)):
-        total += queue_wait_avgs[t]
-    total_avg_wait = total / server_count
-
-    print("Average wait %1.1f secs when balancing load across %i servers." % (total_avg_wait, server_count))
-        
-
-
-def main(file, servers):
-
-    if servers == 1:
-        simulateOneServer(file)
-    
-    elif 1 < servers <= 3:
-        simulateManyServers(file, servers)
-
-
-    else:
-        print("Choose between 1 and 3 servers")
-
-
-
-if __name__ == "__main__":
-    """Main entry point"""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--file", help="URL to the datafile", type=str, required=True)
-    parser.add_argument("--servers", help="Number of Servers", type=int, required=True)
-    args = parser.parse_args()
-
-    file = args.file
-    servers = args.servers
-    main(file, servers)
+    if __name__ == '__main__':
+        parser = argparse.ArgumentParser(description="Printer Program")
+        parser.add_argument("--file", help="Provide path of the file")
+        args = parser.parse_args()
+        main(args)
